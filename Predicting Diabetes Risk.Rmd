@@ -1,0 +1,299 @@
+---
+title: "Predicting Diabetes Risk Using Machine Learning"
+subtitle: "A Comparative Analysis of Nine Supervised Classifiers on the CDC BRFSS 2015 Dataset"
+author:
+  - Yaswanth Moapda
+  - Srujith Borra
+  - Uday Ankam
+date: "Spring 2025"
+course: "CSP 571 — Machine Learning"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    theme: flatly
+    highlight: tango
+    number_sections: true
+    code_folding: show
+    df_print: paged
+  pdf_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo       = TRUE,
+  warning    = FALSE,
+  message    = FALSE,
+  fig.width  = 10,
+  fig.height = 7,
+  fig.align  = "center",
+  cache      = FALSE
+)
+```
+
+# Abstract
+
+Diabetes mellitus affects over 37 million Americans, with a substantial proportion remaining undiagnosed until complications develop. Traditional diagnostic pathways require laboratory measurements, creating barriers to large-scale early screening. This study evaluates whether machine learning models trained exclusively on self-reported behavioral and demographic data from the CDC Behavioral Risk Factor Surveillance System (BRFSS) 2015 can achieve clinically meaningful predictive accuracy. We train and compare nine supervised classifiers spanning parametric, tree-based, kernel-based, distance-based, and neural architectures on a class-balanced subset of 67,920 records. Gradient Boosted Machines (GBM) and XGBoost emerge as top performers (AUC ≈ 0.83), though Logistic Regression achieves nearly equivalent discrimination (AUC = 0.820), suggesting the underlying feature-outcome relationship is predominantly linear. The findings support the feasibility of survey-based diabetes screening tools and demonstrate that simpler interpretable models retain practical utility relative to more complex alternatives.
+
+**Keywords:** Diabetes prediction; supervised learning; gradient boosting; logistic regression; medical screening; BRFSS
+
+---
+
+# Introduction
+
+## Background and Motivation
+
+Type 2 diabetes mellitus is among the most prevalent chronic conditions in the United States, affecting an estimated 37 million adults, with an additional 96 million classified as pre-diabetic [CDC, 2022]. A critical public-health challenge is that approximately 25% of affected individuals remain undiagnosed until complications such as neuropathy, nephropathy, or cardiovascular disease have already manifested. Early identification of at-risk individuals is therefore of substantial clinical value, yet conventional diagnostic pathways depend on laboratory glucose measurements that require clinical access and infrastructure.
+
+Machine learning offers a complementary approach: by leveraging behavioral and demographic survey data—which can be collected at minimal cost—predictive models may identify high-risk individuals for targeted clinical follow-up. The Behavioral Risk Factor Surveillance System (BRFSS), administered annually by the CDC, provides large-scale survey data ideally suited to this task.
+
+## Research Questions
+
+This study addresses three research questions:
+
+1. **Predictive Feasibility:** Can survey-based features alone achieve clinically meaningful predictive accuracy for diabetes status?
+2. **Model Comparison:** Among nine candidate classifiers spanning different inductive biases, which yields the strongest discriminative performance?
+3. **Linearity of Signal:** To what extent does non-linear modeling improve over a linear baseline, and what does this imply about the structure of the underlying relationship?
+
+## Contributions
+
+This work contributes (i) a systematic comparison of nine classifiers under controlled preprocessing, (ii) an integrated EDA-driven justification for each modeling choice, and (iii) a clinically-grounded interpretation prioritizing sensitivity over specificity for the screening application.
+
+---
+
+# Dataset and Preprocessing
+
+## Data Source
+
+The analysis uses the file `diabetes_binary_5050split_health_indicators_BRFSS2015.csv` from the UCI Machine Learning Repository [UCI, 2023], a class-balanced variant of the BRFSS 2015 survey containing 70,692 records, 21 predictors, and a binary diabetes outcome (`Diabetes_binary`). The full dataset and documentation are publicly available at <https://archive.ics.uci.edu/dataset/891/cdc+diabetes+health+indicators>.
+
+## Predictor Set
+
+The 21 features comprise 14 binary indicators and 7 continuous variables:
+
+- **Binary (14):** HighBP, HighChol, CholCheck, Smoker, Stroke, HeartDiseaseorAttack, PhysActivity, Fruits, Veggies, HvyAlcoholConsump, AnyHealthcare, NoDocbcCost, DiffWalk, Sex
+- **Continuous (7):** BMI, GenHlth, MentHlth, PhysHlth, Age, Education, Income
+
+## Preprocessing Pipeline
+
+```{r preprocessing-setup, eval=FALSE}
+library(data.table); library(dplyr); library(caret)
+
+# load data
+df <- as.data.frame(fread("diabetes_binary_5050split_health_indicators_BRFSS2015.csv"))
+
+# remove duplicates to prevent data leakage between train/test
+df <- df[!duplicated(df), ]
+
+# downsample to perfect 50/50 balance
+min_n <- min(table(df$Diabetes_binary))
+df <- df %>% group_by(Diabetes_binary) %>% slice_sample(n = min_n) %>% ungroup()
+
+# encode binary predictors as factors
+bin_cols <- c("HighBP", "HighChol", "Smoker", "Stroke", "HeartDiseaseorAttack",
+              "PhysActivity", "Fruits", "Veggies", "HvyAlcoholConsump",
+              "AnyHealthcare", "NoDocbcCost", "DiffWalk", "Sex", "CholCheck")
+for (v in bin_cols) df[[v]] <- factor(df[[v]], levels = c(0, 1))
+
+# z-score standardize continuous predictors
+cont_cols <- c("BMI", "GenHlth", "MentHlth", "PhysHlth", "Age", "Education", "Income")
+for (v in cont_cols) df[[v]] <- scale(df[[v]])[, 1]
+
+# stratified 70/30 train-test split
+idx   <- createDataPartition(df$Diabetes_binary, p = 0.70, list = FALSE)
+train <- df[idx, ]; test <- df[-idx, ]
+```
+
+Each preprocessing decision was made deliberately to ensure unbiased and algorithm-appropriate inputs:
+
+| Step | Result | Justification |
+|---|---|---|
+| Duplicate removal | 1,635 rows removed (→ 69,057) | Prevents data leakage if identical records appear in both partitions |
+| Class balancing | 67,920 rows (50/50) | Eliminates majority-class bias in threshold-sensitive classifiers |
+| Factor encoding | 14 binary features | Ensures tree-based models treat them as categorical |
+| Z-score standardization | 7 continuous features | Required for distance- and gradient-based classifiers |
+| Stratified 70/30 split | 47,544 / 20,376 | Preserves class balance in both partitions |
+
+---
+
+# Exploratory Data Analysis
+
+EDA was conducted before modeling to identify predictive signal, assess distributional assumptions, and inform model selection. Findings from this phase directly motivated the inductive bias choices in Section 4.
+
+## Univariate Distributions
+
+The age effect (Plot 03 in the supporting figures) shows diabetes prevalence rising near-monotonically from 8% in the youngest cohort to 61% in the oldest—suggesting age behaves as a near-linear predictor and that simpler models may be competitive.
+
+The BMI density plot reveals a clear rightward shift for diabetic individuals, consistent with the established adiposity-diabetes pathway.
+
+## Correlation Structure
+
+Pearson correlations with the target identify GenHlth, BMI, Age, and HighBP as the strongest positively-correlated features, while Income and PhysActivity are negatively correlated. Critically, no inter-predictor correlation exceeds |r| ≈ 0.5, indicating multicollinearity is not a concern—a finding later confirmed by the Lasso analysis in Section 5.
+
+## Bivariate Patterns
+
+A near-perfect monotonic relationship between self-rated general health and diabetes prevalence (Plot 05) establishes GenHlth as the strongest single predictor. HighBP exhibits the largest binary-feature gap (67% vs. 37%) between diabetic and non-diabetic groups, while Income and Education show consistent socioeconomic gradients.
+
+---
+
+# Model Selection and Training
+
+## Selection Rationale
+
+Nine models were selected to span hypothesis classes directly motivated by EDA findings. The near-linear age and general health trends suggested a linear classifier would be competitive, motivating Logistic Regression as the baseline. The distributional overlap and multi-feature interactions visible in EDA Plots 06–07 motivated tree-based ensembles. Decision Tree was included for interpretability; Random Forest and GBM for non-linear pattern capture; XGBoost for its regularization advantages over standard gradient boosting; SVM and Neural Network as kernel-based and non-parametric alternatives; and k-NN as a distance-based local classifier.
+
+## Model Specifications
+
+```{r model-table, echo=FALSE}
+knitr::kable(
+  data.frame(
+    Model = c("Logistic Regression", "Lasso (glmnet)", "Decision Tree (rpart)",
+              "Random Forest", "GBM", "XGBoost", "SVM", "Neural Network", "k-NN"),
+    `Training Data` = c("Full (47,544)", "Full (47,544)", "Full (47,544)",
+                        "Full (47,544)", "Full (47,544)", "Full (47,544)",
+                        "10% subsample (4,756)", "10% subsample (4,756)", "10% subsample (4,756)"),
+    `Configuration` = c(
+      "Binomial GLM, all 21 features",
+      "alpha=1, lambda by 5-fold CV (λ ≈ 8e-4)",
+      "rpart, cp=0.001, maxdepth=6",
+      "300 trees, mtry=4, importance tracked",
+      "500 trees, depth=3, shrinkage=0.05",
+      "400 rounds, eta=0.05, depth=4, subsample=0.8",
+      "Linear kernel, cost=1, probability output",
+      "1 hidden layer, 8 units, decay=0.01, 200 iters",
+      "k=21 (≈ √n for subsample)"
+    ),
+    `Justification` = c(
+      "Interpretable linear baseline; EDA suggested linear competitiveness",
+      "Tests redundancy in feature set; near-zero λ confirms all features are useful",
+      "Provides interpretable decision rules and complements ensemble methods",
+      "Captures non-linear interactions; provides feature importance",
+      "Sequential boosting suited to moderate class overlap",
+      "L1/L2-regularized boosting to test against overfitting",
+      "Margin-based kernel comparison",
+      "Universal function approximator baseline",
+      "Distance-based local classifier for non-parametric comparison"
+    ),
+    check.names = FALSE
+  ),
+  caption = "Table 1 — Model specifications and justifications"
+)
+```
+
+## Computational Constraints
+
+SVM, Neural Network, and k-NN were trained on a 10% stratified subsample (4,756 rows) due to the O(n²) memory cost of the SVM kernel matrix and the O(n_train × n_test) inference cost of k-NN at full scale. This is an acknowledged limitation; their reported metrics represent lower bounds on full-data performance and should not be directly compared to the six full-data models.
+
+---
+
+# Results and Evaluation
+
+## Evaluation Protocol
+
+All models were evaluated on the held-out 20,376-row test set at a classification threshold of 0.5. Six metrics are reported:
+
+- **Accuracy:** Overall correct classification rate
+- **Sensitivity (Recall, TPR):** Proportion of true diabetic cases correctly identified
+- **Specificity (TNR):** Proportion of true non-diabetic cases correctly identified
+- **Precision (PPV):** Proportion of positive predictions that are correct
+- **F1:** Harmonic mean of Precision and Sensitivity
+- **AUC:** Area under the ROC curve—threshold-independent discrimination
+
+In a medical screening context, **Sensitivity and AUC are prioritized** over Accuracy because the asymmetric cost of false negatives—a missed diabetic case—substantially exceeds the cost of false positives.
+
+## Performance Comparison
+
+```{r results-table, echo=FALSE}
+knitr::kable(
+  data.frame(
+    Model        = c("GBM", "XGBoost", "Logistic", "Lasso", "SVM",
+                     "RandomForest", "NeuralNet", "DecisionTree", "kNN"),
+    Accuracy     = c(0.7486, 0.7482, 0.7456, 0.7454, 0.7442,
+                     0.7411, 0.7266, 0.7180, 0.6892),
+    Sensitivity  = c(0.7892, 0.7861, 0.7673, 0.7675, 0.7629,
+                     0.7847, 0.7487, 0.7345, 0.6914),
+    Specificity  = c(0.7081, 0.7104, 0.7239, 0.7233, 0.7256,
+                     0.6974, 0.7046, 0.7015, 0.6870),
+    Precision    = c(0.7300, 0.7311, 0.7354, 0.7350, 0.7354,
+                     0.7217, 0.7171, 0.7110, 0.6884),
+    F1           = c(0.7584, 0.7576, 0.7510, 0.7509, 0.7489,
+                     0.7519, 0.7325, 0.7226, 0.6899),
+    AUC          = c(0.8266, 0.8255, 0.8197, 0.8197, 0.8183,
+                     0.8135, 0.7983, 0.7895, 0.7548)
+  ),
+  caption = "Table 2 — Model performance on test set (sorted by AUC)",
+  digits = 4
+)
+```
+
+## Discussion of Results
+
+### Overall Ranking
+
+GBM and XGBoost achieve the highest discrimination (AUC = 0.827 and 0.826 respectively), consistent with theoretical expectations that sequential boosting outperforms bagging on moderately overlapping class distributions. The near-equivalent performance of these two boosting variants further suggests that XGBoost's additional regularization provides only marginal benefit on this dataset.
+
+### Linearity of the Underlying Relationship
+
+The most analytically significant finding is that **Logistic Regression closely follows the boosting methods** (AUC = 0.820)—an AUC gap of only 0.007 from the best model. This near-equivalence indicates that the feature-outcome relationship is predominantly linear, with non-linear ensemble methods providing marginal but not transformative improvement. This finding has practical implications: an interpretable Logistic Regression model could be deployed with minimal predictive sacrifice relative to GBM, while preserving clinical interpretability of coefficients.
+
+### Lasso Regularization Outcome
+
+The Lasso model's cross-validated regularization parameter (λ ≈ 0.00082) is effectively zero, leaving all 21 features with negligible coefficient shrinkage. This empirically confirms the EDA hypothesis that all predictors carry genuine signal and that multicollinearity is insufficient to cause estimation instability. Had Lasso shrunk multiple coefficients to zero, it would have indicated redundancy; the fact that it did not strengthens the case for the full 21-feature specification.
+
+### Underperformance of k-NN, Decision Tree, and Neural Network
+
+Three models underperformed the leading group:
+
+- **k-NN (AUC = 0.755)** suffers from the curse of dimensionality—21 features create a sparse feature space where distance-based classification degrades, and the 10% subsample further limits its reference set.
+- **Decision Tree (AUC = 0.790)** captures only axis-aligned splits and cannot leverage the smooth gradients in continuous features (BMI, Age, GenHlth) that ensemble methods aggregate over.
+- **Neural Network (AUC = 0.798)** was constrained to a 4,756-row subsample; shallow networks are data-hungry and likely would benefit substantially from full-dataset training.
+
+### Variable Importance
+
+The Random Forest importance plot ranks GenHlth and BMI as the top predictors—precisely the features showing the most pronounced group differences in the EDA. This congruence between exploratory findings and model-learned importance provides evidence that the models capture genuine population-level risk patterns rather than spurious correlations.
+
+### Clinical Decision Analysis
+
+For the screening application, GBM is the recommended deployment model based on its highest sensitivity (78.9%) and lowest false negative count. The GBM confusion matrix yields 8,040 true positives, 7,214 true negatives, 2,974 false positives, and 2,148 false negatives—a false-negative rate of approximately 21% at the default threshold. Threshold optimization below 0.5 could further reduce false negatives at the cost of increased false positives, a trade-off to be calibrated against deployment-specific cost structures.
+
+---
+
+# Conclusions and Future Work
+
+## Summary of Findings
+
+This study demonstrates that diabetes risk can be predicted with AUC ≈ 0.83 and Sensitivity ≈ 79% using only self-reported survey data—no laboratory measurements required. Among nine candidate classifiers, GBM and XGBoost achieve the strongest discrimination, but Logistic Regression's near-equivalent performance reveals that the feature-outcome relationship is predominantly linear. The top predictors—General Health, BMI, Age, HighBP, and Income—align with established clinical and epidemiological understanding of Type 2 diabetes risk factors, strengthening confidence that the models learn genuine causal pathways.
+
+## Limitations
+
+Three limitations warrant acknowledgment:
+
+1. **Subsampling bias for SVM, NN, and k-NN:** These three models were trained on only 10% of available data due to computational constraints; full-data training would likely improve their absolute performance and could alter the ranking.
+2. **Class balance does not match population prevalence:** The 50/50 training distribution does not reflect the true ≈14% population prevalence; deployment would require probability recalibration via Platt scaling or isotonic regression.
+3. **Self-report measurement error:** All predictors are self-reported via telephone interview, introducing measurement error and potential recall bias.
+
+## Future Work
+
+- Full-data training for SVM, Neural Network, and k-NN
+- Hyperparameter optimization via grid search or Bayesian methods
+- Ensemble stacking combining GBM, XGBoost, and Logistic Regression
+- Threshold optimization for clinical sensitivity targets
+- Probability calibration for deployment under realistic class prevalence
+- Validation on more recent BRFSS cycles (2020+) to assess temporal generalizability
+
+---
+
+# References
+
+1. Centers for Disease Control and Prevention. (2022). *National Diabetes Statistics Report.* CDC.
+2. UCI Machine Learning Repository. (2023). *CDC Diabetes Health Indicators Dataset.* <https://archive.ics.uci.edu/dataset/891/cdc+diabetes+health+indicators>
+3. Tibshirani, R. (1996). Regression shrinkage and selection via the lasso. *Journal of the Royal Statistical Society B*, 58(1), 267–288.
+4. Breiman, L. (2001). Random forests. *Machine Learning*, 45(1), 5–32.
+5. Friedman, J. H. (2001). Greedy function approximation: A gradient boosting machine. *Annals of Statistics*, 29(5), 1189–1232.
+6. Chen, T., & Guestrin, C. (2016). XGBoost: A scalable tree boosting system. *Proceedings of KDD '16*, 785–794.
+7. Cortes, C., & Vapnik, V. (1995). Support-vector networks. *Machine Learning*, 20(3), 273–297.
+8. Cover, T., & Hart, P. (1967). Nearest neighbor pattern classification. *IEEE Transactions on Information Theory*, 13(1), 21–27.
