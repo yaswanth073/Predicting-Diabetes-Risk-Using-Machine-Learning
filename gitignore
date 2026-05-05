@@ -1,0 +1,84 @@
+# ─────────────────────────────────────────────
+#  .gitignore — Diabetes ML Project (R)
+# ─────────────────────────────────────────────
+
+# ── Data files (too large / not to be committed) ──────────────
+data/
+*.csv
+*.tsv
+*.xlsx
+*.xls
+
+# ── R session & workspace ─────────────────────────────────────
+.RData
+.Rhistory
+.Rapp.history
+.RProfile
+*.Rproj.user/
+
+# ── R package library (local installs) ───────────────────────
+renv/library/
+packrat/lib/
+packrat/src/
+
+# ── Auto-generated output folders ────────────────────────────
+plots/
+results/
+
+# ── R markdown / Quarto build artifacts ──────────────────────
+*.html
+*_files/
+*_cache/
+/doc/
+/docs/
+
+# ── OS files ──────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ── IDE & editor files ────────────────────────────────────────
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*~
+
+# ── Log & temp files ─────────────────────────────────────────
+*.log
+*.tmp
+*.temp
+Rplots.pdf
+
+# ── Large model objects (save separately if needed) ───────────
+*.rds
+*.RDS
+*.rda
+*.RData
+
+# ── Credentials & secrets ─────────────────────────────────────
+.env
+.env.*
+secrets.R
+credentials.R
+api_keys.R
+
+# ── Node (if any JS build tools were used) ───────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── Keep these tracked ────────────────────────────────────────
+# (these are explicitly NOT ignored)
+# Diabetes_Complete.R
+# README.md
+# .gitignore
