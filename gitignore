@@ -1,0 +1,106 @@
+# =============================================================================
+# .gitignore — Diabetes ML Project (R + RMD)
+# CSP 571 Spring 2026
+# =============================================================================
+
+# ── Data files (too large for Git) ───────────────────────────
+data/
+*.csv
+*.tsv
+*.xlsx
+*.xls
+
+# ── R session & workspace ────────────────────────────────────
+.RData
+.Rhistory
+.Rapp.history
+.RProfile
+*.Rproj.user/
+.Ruserdata
+.Rprofile
+
+# ── R package management ─────────────────────────────────────
+renv/library/
+renv/local/
+renv/cellar/
+packrat/lib/
+packrat/src/
+
+# ── R Markdown / Quarto build artifacts ──────────────────────
+*.html
+*_files/
+*_cache/
+*.utf8.md
+*.knit.md
+/doc/
+/docs/
+
+# ── Auto-generated output folders ────────────────────────────
+plots/
+results/
+outputs/
+figures/
+
+# ── R model objects (regenerate via script) ──────────────────
+*.rds
+*.RDS
+*.rda
+
+# ── Plots saved by R ─────────────────────────────────────────
+Rplots.pdf
+
+# ── OS files ─────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ── IDE & editor files ───────────────────────────────────────
+.vscode/
+.idea/
+*.suo
+*.sw?
+*~
+*.bak
+
+# ── Log & temp files ─────────────────────────────────────────
+*.log
+*.tmp
+*.temp
+*.out
+
+# ── Credentials & secrets ────────────────────────────────────
+.env
+.env.*
+secrets.R
+credentials.R
+api_keys.R
+*.pem
+*.key
+
+# ── Node modules (from doc generation tools) ─────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── LaTeX intermediate files (for PDF Rmd) ───────────────────
+*.aux
+*.bbl
+*.blg
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.toc
+
+# ── Files to KEEP tracked (NOT ignored) ──────────────────────
+# Diabetes_Complete.R
+# Diabetes_Complete.Rmd
+# Diabetes_Report.docx
+# Diabetes_Presentation.pptx
+# README.md
+# .gitignore
